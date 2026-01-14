@@ -176,7 +176,7 @@
         );
       }
 
-      if (view === 'create') return <CreateMeeting onBack={() => setView('landing')} onCreated={async (data, id) => { setMeetingData(data); setMeetingId(id); const code = await supabase.createShortUrl(id); setShortCode(code); setView('share'); }} />;
+      if (view === 'create') return <CreateMeeting onBack={() => setView('landing')} initialData={meetingData} onCreated={async (data, id) => { setMeetingData(data); setMeetingId(id); const code = await supabase.createShortUrl(id); setShortCode(code); setView('share'); }} />;
 
       if (view === 'share') {
         const fullUrl = `${window.location.origin}${window.location.pathname}#/meeting/${meetingId}`;
@@ -213,6 +213,7 @@
                 <button onClick={() => setView('results')} className="flex-1 px-4 py-3 bg-slate-700 rounded-lg font-medium hover:bg-slate-600 transition-colors">View results</button>
               </div>
               <button onClick={() => setView('landing')} className="w-full mt-4 text-slate-400 hover:text-slate-300 text-sm">← Back to home</button>
+              <button onClick={() => setView('create')} className="w-full mt-2 text-slate-400 hover:text-slate-300 text-sm">✎ Edit meeting details</button>
             </div>
           </div>
         );
@@ -228,6 +229,7 @@
               <h1 className="text-3xl font-bold mb-2">Availability submitted!</h1>
               <p className="text-slate-400 mb-8">Your response has been recorded.</p>
               <button onClick={() => setView('results')} className="px-6 py-3 bg-violet-600 rounded-lg font-medium hover:bg-violet-500 transition-colors">View results</button>
+              <button onClick={() => setView('guest')} className="w-full mt-4 text-slate-400 hover:text-slate-300 text-sm">← Submit another response</button>
             </div>
           </div>
         );
@@ -237,14 +239,14 @@
       return null;
     }
 
-    function CreateMeeting({ onBack, onCreated }) {
-      const [title, setTitle] = useState('');
-      const [description, setDescription] = useState('');
-      const [patterns, setPatterns] = useState([]);
-      const [startTime, setStartTime] = useState('9:00 AM');
-      const [endTime, setEndTime] = useState('5:00 PM');
-      const [timezone, setTimezone] = useState('America/New_York');
-      const [duration, setDuration] = useState('60');
+    function CreateMeeting({ onBack, onCreated, initialData }) {
+      const [title, setTitle] = useState(initialData?.title || '');
+      const [description, setDescription] = useState(initialData?.description || '');
+      const [patterns, setPatterns] = useState(initialData?.patterns || []);
+      const [startTime, setStartTime] = useState(initialData?.startTime || '9:00 AM');
+      const [endTime, setEndTime] = useState(initialData?.endTime || '5:00 PM');
+      const [timezone, setTimezone] = useState(initialData?.timezone || 'America/New_York');
+      const [duration, setDuration] = useState(initialData?.duration || '60');
 
       const togglePattern = (ord, day) => {
         const key = `${ord}-${day}`;
@@ -261,7 +263,7 @@
         <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
           <div className="max-w-2xl mx-auto">
             <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-300 mb-8"><Icon name="arrowLeft" className="w-4 h-4" /> Back</button>
-            <h1 className="text-3xl font-bold mb-8">Create a meeting</h1>
+            <h1 className="text-3xl font-bold mb-8">{initialData ? 'Edit meeting' : 'Create a meeting'}</h1>
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium mb-2">Meeting title *</label>
@@ -328,7 +330,7 @@
                 </div>
                 {patterns.length > 0 && <p className="text-sm text-violet-400 mt-3">{patterns.length} pattern{patterns.length !== 1 && 's'} selected</p>}
               </div>
-              <button onClick={handleCreate} disabled={!title.trim() || patterns.length === 0} className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:from-violet-500 hover:to-indigo-500 transition-all mt-8">Create meeting</button>
+              <button onClick={handleCreate} disabled={!title.trim() || patterns.length === 0} className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:from-violet-500 hover:to-indigo-500 transition-all mt-8">{initialData ? 'Update meeting' : 'Create meeting'}</button>
             </div>
           </div>
         </div>
@@ -393,6 +395,7 @@
                 <button onClick={() => navigator.clipboard.writeText(privateLink)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
               </div>
               <p className="text-slate-500 text-sm">Copy and send via email, text, or any messaging app.</p>
+              <button onClick={() => setPrivateLink(null)} className="w-full mt-6 text-slate-400 hover:text-slate-300 text-sm">← Go back to edit</button>
             </div>
           </div>
         );
