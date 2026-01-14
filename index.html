@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RecurDay - Schedule by Pattern</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Lucide icons as simple SVG components
+    const Icon = ({ name, className = "w-5 h-5" }) => {
+      const ref = React.useRef(null);
+      useEffect(() => {
+        if (ref.current) {
+          ref.current.innerHTML = '';
+          lucide.createElement(lucide.icons[name]).forEach(el => ref.current.appendChild(el));
+        }
+      }, [name]);
+      return <span ref={ref} className={`inline-flex ${className}`} />;
+    };
+
+    // Supabase config
+    const SUPABASE_URL = 'https://qnmvfiorrtoelyutcfvp.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubXZmaW9ycnRvZWx5dXRjZnZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzMTgxOTMsImV4cCI6MjA4Mzg5NDE5M30.ZwgAENocoXd6IIj3_QfItJMK-8rnxaco3JDmyZIEQl4';
+
+    const supabase = {
+      async getResponses(meetingId) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/responses?meeting_id=eq.${meetingId}&select=*`, {
+          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        return res.ok ? await res.json() : [];
+      },
+      async addResponse(meetingId, name, availability) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/responses`, {
+          method: 'POST',
+          headers: { 
+            'apikey': SUPABASE_ANON_KEY, 
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ meeting_id: meetingId, name, availability })
+        });
+        return res.ok;
+      }
+    };
+
+    const encodeMeeting = (data) => btoa(encodeURIComponent(JSON.stringify(data)));
+    const decodeMeeting = (str) => { try { return JSON.parse(decodeURIComponent(atob(str))); } catch { return null; } };
+    const encodeResponse = (data) => btoa(encodeURIComponent(JSON.stringify(data)));
+    const decodeResponse = (str) => { try { return JSON.parse(decodeURIComponent(atob(str))); } catch { return null; } };
+
+    const ORDINALS = ['First', 'Second', 'Third', 'Fourth', 'Last'];
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const START_TIMES = ['8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM'];
+    const END_TIMES = ['9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM'];
+    const TIMEZONES = [
+      { value: 'Pacific/Honolulu', label: 'Hawaii (HST)' },
+      { value: 'America/Anchorage', label: 'Alaska (AKST)' },
+      { value: 'America/Los_Angeles', label: 'Pacific (PT)' },
+      { value: 'America/Denver', label: 'Mountain (MT)' },
+      { value: 'America/Chicago', label: 'Central (CT)' },
+      { value: 'America/New_York', label: 'Eastern (ET)' }
+    ];
+
+    function App() {
+      const [view, setView] = useState('landing');
+      const [meetingData, setMeetingData] = useState(null);
+      const [meetingId, setMeetingId] = useState(null);
+
+      useEffect(() => {
+        const hash = window.location.hash;
+        if (hash.startsWith('#/meeting/')) {
+          const encoded = hash.replace('#/meeting/', '');
+          const decoded = decodeMeeting(encoded);
+          if (decoded) { setMeetingData(decoded); setMeetingId(encoded); setView('guest'); }
+        }
+      }, []);
+
+      if (view === 'landing') {
+        return (
+          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+            <div className="max-w-4xl mx-auto px-6 pt-20 pb-16">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center"><Icon name="calendar" /></div>
+                <span className="text-xl font-semibold">RecurDay</span>
+              </div>
+              <h1 className="text-5xl font-bold mb-6 leading-tight">Schedule by <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">pattern</span>,<br />not by date.</h1>
+              <p className="text-xl text-slate-400 mb-10 max-w-2xl">Finally, a meeting scheduler for recurring events. Pick "the first Tuesday" or "the third Thursday"—not January 7th, February 4th, March 4th...</p>
+              <button onClick={() => setView('create')} className="px-6 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium flex items-center gap-2 hover:from-violet-500 hover:to-indigo-500 transition-all shadow-lg shadow-violet-900/30">Create a meeting <Icon name="chevron-right" className="w-4 h-4" /></button>
+            </div>
+            <div className="max-w-4xl mx-auto px-6 py-16 border-t border-slate-800">
+              <div className="grid md:grid-cols-3 gap-8">
+                {[{ icon: 'calendar', title: 'Pattern-based', desc: 'Schedule the 2nd Wednesday, not a specific date' },
+                  { icon: 'users', title: 'Find overlap', desc: 'See which patterns work for everyone' },
+                  { icon: 'sparkles', title: 'Privacy-first', desc: 'No accounts, no emails—just names' }
+                ].map(({ icon, title, desc }) => (
+                  <div key={title} className="p-6 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                    <div className="w-8 h-8 mb-4 text-violet-400"><Icon name={icon} className="w-8 h-8" /></div>
+                    <h3 className="font-semibold mb-2">{title}</h3>
+                    <p className="text-slate-400 text-sm">{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="max-w-4xl mx-auto px-6 py-16 border-t border-slate-800">
+              <h2 className="text-2xl font-bold mb-8">How it works</h2>
+              <div className="space-y-4">
+                {['Pick your recurring day patterns (e.g., "First Monday," "Third Friday")', 'Add optional time preferences', 'Share your unique link with guests', 'See which patterns have the most availability'].map((step, i) => (
+                  <div key={i} className="flex gap-4 items-start">
+                    <span className="w-7 h-7 rounded-full bg-violet-600/20 text-violet-400 flex items-center justify-center text-sm font-medium shrink-0">{i + 1}</span>
+                    <p className="text-slate-300 pt-0.5">{step}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (view === 'create') return <CreateMeeting onBack={() => setView('landing')} onCreated={(data, id) => { setMeetingData(data); setMeetingId(id); setView('share'); }} />;
+
+      if (view === 'share') {
+        const shareUrl = `${window.location.origin}${window.location.pathname}#/meeting/${meetingId}`;
+        return (
+          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
+            <div className="max-w-xl mx-auto pt-16">
+              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6"><Icon name="check" className="w-8 h-8 text-green-400" /></div>
+              <h1 className="text-3xl font-bold text-center mb-2">Meeting created!</h1>
+              <p className="text-slate-400 text-center mb-8">Share this link with your guests</p>
+              <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 mb-4 border border-slate-700">
+                <Icon name="link" className="w-5 h-5 text-slate-400" />
+                <span className="text-sm truncate flex-1 text-slate-300">{shareUrl}</span>
+                <button onClick={() => navigator.clipboard.writeText(shareUrl)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
+              </div>
+              <div className="flex gap-3 mt-8">
+                <button onClick={() => setView('guest')} className="flex-1 px-4 py-3 bg-violet-600 rounded-lg font-medium hover:bg-violet-500 transition-colors">Preview as guest</button>
+                <button onClick={() => setView('results')} className="flex-1 px-4 py-3 bg-slate-700 rounded-lg font-medium hover:bg-slate-600 transition-colors">View results</button>
+              </div>
+              <button onClick={() => setView('landing')} className="w-full mt-4 text-slate-400 hover:text-slate-300 text-sm">← Back to home</button>
+            </div>
+          </div>
+        );
+      }
+
+      if (view === 'guest') return <GuestView meeting={meetingData} meetingId={meetingId} onSubmitted={() => setView('submitted')} onViewResults={() => setView('results')} />;
+
+      if (view === 'submitted') {
+        return (
+          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
+            <div className="max-w-xl mx-auto pt-16 text-center">
+              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6"><Icon name="check" className="w-8 h-8 text-green-400" /></div>
+              <h1 className="text-3xl font-bold mb-2">Availability submitted!</h1>
+              <p className="text-slate-400 mb-8">Your response has been recorded.</p>
+              <button onClick={() => setView('results')} className="px-6 py-3 bg-violet-600 rounded-lg font-medium hover:bg-violet-500 transition-colors">View results</button>
+            </div>
+          </div>
+        );
+      }
+
+      if (view === 'results') return <ResultsView meeting={meetingData} meetingId={meetingId} onBack={() => setView('guest')} />;
+      return null;
+    }
+
+    function CreateMeeting({ onBack, onCreated }) {
+      const [title, setTitle] = useState('');
+      const [description, setDescription] = useState('');
+      const [patterns, setPatterns] = useState([]);
+      const [startTime, setStartTime] = useState('9:00 AM');
+      const [endTime, setEndTime] = useState('5:00 PM');
+      const [timezone, setTimezone] = useState('America/New_York');
+      const [duration, setDuration] = useState('60');
+
+      const togglePattern = (ord, day) => {
+        const key = `${ord}-${day}`;
+        setPatterns(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
+      };
+
+      const handleCreate = () => {
+        if (!title.trim() || patterns.length === 0) return;
+        const data = { title, description, patterns, startTime, endTime, timezone, duration, created: Date.now() };
+        onCreated(data, encodeMeeting(data));
+      };
+
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
+          <div className="max-w-2xl mx-auto">
+            <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-300 mb-8"><Icon name="arrow-left" className="w-4 h-4" /> Back</button>
+            <h1 className="text-3xl font-bold mb-8">Create a meeting</h1>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2">Meeting title *</label>
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Monthly team sync" className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Description (optional)</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add any details..." rows={2} className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 resize-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-3">Time preferences</label>
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Duration</label>
+                    <select value={duration} onChange={(e) => setDuration(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
+                      <option value="30">30 min</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Start time</label>
+                    <select value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
+                      {START_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">End time</label>
+                    <select value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
+                      {END_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Time zone</label>
+                    <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="w-full px-3 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 text-sm">
+                      {TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-3">Select recurring patterns *</label>
+                <p className="text-slate-400 text-sm mb-4">Click to select which day patterns to offer</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-separate" style={{ borderSpacing: '4px' }}>
+                    <thead><tr><th className="p-2 w-16"></th>{DAYS.map(day => <th key={day} className="p-2 text-slate-400 font-medium w-12">{day.slice(0, 3)}</th>)}</tr></thead>
+                    <tbody>
+                      {ORDINALS.map(ord => (
+                        <tr key={ord}>
+                          <td className="p-2 text-slate-400 font-medium">{ord}</td>
+                          {DAYS.map(day => {
+                            const key = `${ord}-${day}`;
+                            const selected = patterns.includes(key);
+                            return (
+                              <td key={day} className="p-0">
+                                <button onClick={() => togglePattern(ord, day)} className={`w-12 h-12 rounded-lg transition-all flex items-center justify-center ${selected ? 'bg-violet-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-500'}`}>
+                                  {selected && <Icon name="check" className="w-4 h-4" />}
+                                </button>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {patterns.length > 0 && <p className="text-sm text-violet-400 mt-3">{patterns.length} pattern{patterns.length !== 1 && 's'} selected</p>}
+              </div>
+              <button onClick={handleCreate} disabled={!title.trim() || patterns.length === 0} className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:from-violet-500 hover:to-indigo-500 transition-all mt-8">Create meeting</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function GuestView({ meeting, meetingId, onSubmitted, onViewResults }) {
+      const [name, setName] = useState('');
+      const [selectedCells, setSelectedCells] = useState(new Set());
+      const [isSelecting, setIsSelecting] = useState(false);
+      const [submitting, setSubmitting] = useState(false);
+      const [privateLink, setPrivateLink] = useState(null);
+
+      const getTimezoneLabel = (v) => TIMEZONES.find(t => t.value === v)?.label || v;
+
+      const generateTimeSlots = () => {
+        const slots = [];
+        const parseHour = (ts) => { const h = parseInt(ts.split(':')[0]); const pm = ts.includes('PM'); return h === 12 ? (pm ? 12 : 0) : (pm ? h + 12 : h); };
+        const formatHour = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h >= 12 ? 'PM' : 'AM'}`;
+        const startH = parseHour(meeting.startTime), endH = parseHour(meeting.endTime), durH = parseInt(meeting.duration) / 60;
+        for (let h = startH; h + durH <= endH; h++) slots.push({ label: `${formatHour(h)} – ${formatHour(h + durH)}`, key: `${h}-${h + durH}` });
+        return slots;
+      };
+
+      const timeSlots = generateTimeSlots();
+      const getOrdinal = (p) => p.split('-')[0];
+      const patternsWithGaps = meeting.patterns.map((p, i) => ({ pattern: p, hasGapAfter: i < meeting.patterns.length - 1 && getOrdinal(p) !== getOrdinal(meeting.patterns[i + 1]) }));
+      const getCellKey = (p, t) => `${p}|${t}`;
+
+      const handleMouseDown = (p, t) => { setIsSelecting(true); const k = getCellKey(p, t); setSelectedCells(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; }); };
+      const handleMouseEnter = (p, t) => { if (isSelecting) setSelectedCells(prev => new Set(prev).add(getCellKey(p, t))); };
+      const handleMouseUp = () => setIsSelecting(false);
+      useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
+
+      const getAvailabilityData = () => Array.from(selectedCells).map(c => { const [p, t] = c.split('|'); return { pattern: p, timeKey: t, timeLabel: timeSlots.find(s => s.key === t)?.label || t }; });
+
+      const handleSubmit = async () => { if (!name.trim() || selectedCells.size === 0) return; setSubmitting(true); const ok = await supabase.addResponse(meetingId, name, getAvailabilityData()); setSubmitting(false); if (ok) onSubmitted(); };
+
+      const handleGetPrivateLink = () => { if (!name.trim() || selectedCells.size === 0) return; setPrivateLink(`${window.location.origin}${window.location.pathname}#/response/${encodeResponse({ name, availability: getAvailabilityData() })}`); };
+
+      if (privateLink) {
+        return (
+          <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
+            <div className="max-w-xl mx-auto pt-16 text-center">
+              <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6"><Icon name="shield" className="w-8 h-8 text-green-400" /></div>
+              <h1 className="text-3xl font-bold mb-2">Private link created!</h1>
+              <p className="text-slate-400 mb-8">Send this link directly to the host. Your data won't be stored.</p>
+              <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 mb-6 border border-slate-700 text-left">
+                <Icon name="link" className="w-5 h-5 text-slate-400" />
+                <span className="text-sm truncate flex-1 text-slate-300">{privateLink}</span>
+                <button onClick={() => navigator.clipboard.writeText(privateLink)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
+              </div>
+              <p className="text-slate-500 text-sm">Copy and send via email, text, or any messaging app.</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
+          <div className="max-w-4xl mx-auto pt-8">
+            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 mb-8">
+              <h1 className="text-2xl font-bold mb-2">{meeting.title}</h1>
+              {meeting.description && <p className="text-slate-400">{meeting.description}</p>}
+              <div className="flex flex-wrap gap-4 text-sm text-slate-500 mt-3">
+                <span>{meeting.duration} minutes</span><span>{meeting.startTime} – {meeting.endTime}</span><span>{getTimezoneLabel(meeting.timezone)}</span>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2">Your name *</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter your name" className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Which days of the month & times work for you? *</label>
+                <p className="text-slate-400 text-sm mb-4">Click or drag to select your available days & times.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-separate" style={{ borderSpacing: '2px' }} onMouseLeave={handleMouseUp}>
+                    <thead><tr><th className="p-2 text-left text-slate-400 font-medium sticky left-0 bg-slate-950"></th>
+                      {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`p-2 text-center text-slate-300 font-medium min-w-24 ${hasGapAfter ? 'pr-4' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
+                    </tr></thead>
+                    <tbody>
+                      {timeSlots.map(({ label, key: tk }) => (
+                        <tr key={tk}>
+                          <td className="p-2 text-slate-400 font-medium text-xs whitespace-nowrap sticky left-0 bg-slate-950">{label}</td>
+                          {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => {
+                            const k = getCellKey(p, tk);
+                            return <td key={p} className={`p-0 ${hasGapAfter ? 'pr-4' : ''}`}><button onMouseDown={() => handleMouseDown(p, tk)} onMouseEnter={() => handleMouseEnter(p, tk)} className={`w-full h-10 rounded transition-all select-none ${selectedCells.has(k) ? 'bg-violet-600' : 'bg-slate-800 hover:bg-slate-700'}`} /></td>;
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {selectedCells.size > 0 && <p className="text-sm text-violet-400 mt-3">{selectedCells.size} time slot{selectedCells.size !== 1 && 's'} selected</p>}
+              </div>
+              <div className="bg-slate-800/30 rounded-xl p-6 border border-slate-700/50 space-y-4">
+                <button onClick={handleSubmit} disabled={!name.trim() || selectedCells.size === 0 || submitting} className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:from-violet-500 hover:to-indigo-500 transition-all">{submitting ? 'Submitting...' : 'Submit Availability'}</button>
+                <p className="text-slate-500 text-xs text-center">Your response will be shared with the host and other guests.</p>
+                <div className="flex items-center gap-4 my-2"><div className="flex-1 border-t border-slate-700"></div><span className="text-slate-500 text-sm">or</span><div className="flex-1 border-t border-slate-700"></div></div>
+                <button onClick={handleGetPrivateLink} disabled={!name.trim() || selectedCells.size === 0} className="w-full py-4 bg-slate-700 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600 transition-all flex items-center justify-center gap-2"><Icon name="shield" className="w-4 h-4" /> Get Private Link Instead</button>
+                <p className="text-slate-500 text-xs text-center">Send your availability directly to the host without storing any data.</p>
+              </div>
+              <button onClick={onViewResults} className="w-full py-3 text-slate-400 hover:text-slate-300 text-sm">View current results →</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ResultsView({ meeting, meetingId, onBack }) {
+      const [hoveredCell, setHoveredCell] = useState(null);
+      const [storedResponses, setStoredResponses] = useState([]);
+      const [privateLinks, setPrivateLinks] = useState('');
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => { (async () => { const data = await supabase.getResponses(meetingId); setStoredResponses(data.map(r => ({ name: r.name, availability: r.availability }))); setLoading(false); })(); }, [meetingId]);
+
+      const parsedPrivate = privateLinks.split('\n').map(l => { const m = l.match(/#\/response\/(.+)$/); return m ? decodeResponse(m[1]) : null; }).filter(Boolean);
+      const responses = [...storedResponses, ...parsedPrivate];
+
+      const generateTimeSlots = () => {
+        const slots = [];
+        const parseHour = (ts) => { const h = parseInt(ts.split(':')[0]); const pm = ts.includes('PM'); return h === 12 ? (pm ? 12 : 0) : (pm ? h + 12 : h); };
+        const formatHour = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h >= 12 ? 'PM' : 'AM'}`;
+        const startH = parseHour(meeting.startTime), endH = parseHour(meeting.endTime), durH = parseInt(meeting.duration) / 60;
+        for (let h = startH; h + durH <= endH; h++) slots.push({ label: `${formatHour(h)} – ${formatHour(h + durH)}`, key: `${h}-${h + durH}` });
+        return slots;
+      };
+
+      const timeSlots = generateTimeSlots();
+      const getCellKey = (p, t) => `${p}|${t}`;
+      const getOrdinal = (p) => p.split('-')[0];
+      const patternsWithGaps = meeting.patterns.map((p, i) => ({ pattern: p, hasGapAfter: i < meeting.patterns.length - 1 && getOrdinal(p) !== getOrdinal(meeting.patterns[i + 1]) }));
+
+      const cellCounts = {}, cellGuests = {};
+      meeting.patterns.forEach(p => timeSlots.forEach(t => { cellCounts[getCellKey(p, t.key)] = 0; cellGuests[getCellKey(p, t.key)] = []; }));
+      responses.forEach(r => r.availability?.forEach(({ pattern, timeKey }) => { const k = getCellKey(pattern, timeKey); if (cellCounts[k] !== undefined) { cellCounts[k]++; cellGuests[k].push(r.name); } }));
+
+      const maxCount = Math.max(...Object.values(cellCounts), 1);
+      const bestCount = Math.max(...Object.values(cellCounts));
+      const bestSlots = Object.entries(cellCounts).filter(([_, c]) => c === bestCount && c > 0).map(([k]) => k);
+
+      const getHeatColor = (c) => { if (c === 0) return 'bg-slate-800'; const i = c / maxCount; return i >= 0.8 ? 'bg-violet-500' : i >= 0.6 ? 'bg-violet-600' : i >= 0.4 ? 'bg-violet-700' : i >= 0.2 ? 'bg-violet-800' : 'bg-violet-900'; };
+
+      if (loading) return <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6 flex items-center justify-center"><p className="text-slate-400">Loading responses...</p></div>;
+
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
+          <div className="max-w-4xl mx-auto pt-8">
+            <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-300 mb-6"><Icon name="arrow-left" className="w-4 h-4" /> Back to voting</button>
+            <h1 className="text-3xl font-bold mb-2">{meeting.title}</h1>
+            <p className="text-slate-400 mb-8">{responses.length} response{responses.length !== 1 && 's'}</p>
+
+            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 mb-6">
+              <h2 className="font-semibold mb-2 flex items-center gap-2"><Icon name="shield" className="w-4 h-4" /> Add private response links</h2>
+              <p className="text-slate-400 text-sm mb-3">Paste links from guests who chose the private option (one per line)</p>
+              <textarea value={privateLinks} onChange={(e) => setPrivateLinks(e.target.value)} placeholder="https://...#/response/..." rows={3} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-violet-500 resize-none text-sm font-mono" />
+              {parsedPrivate.length > 0 && <p className="text-sm text-green-400 mt-2">{parsedPrivate.length} private response{parsedPrivate.length !== 1 && 's'} loaded</p>}
+            </div>
+
+            {responses.length === 0 ? (
+              <div className="bg-slate-800/50 rounded-xl p-8 text-center border border-slate-700/50"><div className="w-12 h-12 mx-auto mb-4 text-slate-600"><Icon name="users" className="w-12 h-12" /></div><p className="text-slate-400">No responses yet. Share your link to start collecting availability!</p></div>
+            ) : (
+              <div className="space-y-6">
+                {bestSlots.length > 0 && (
+                  <div className="bg-violet-600/20 border border-violet-500/50 rounded-xl p-4">
+                    <h3 className="font-semibold text-violet-300 mb-2">★ Best time{bestSlots.length > 1 ? 's' : ''}</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {bestSlots.slice(0, 5).map(s => { const [p, tk] = s.split('|'); const [o, d] = p.split('-'); return <span key={s} className="px-3 py-1 bg-violet-600/30 rounded-full text-sm">{o} {d} {timeSlots.find(t => t.key === tk)?.label}</span>; })}
+                      {bestSlots.length > 5 && <span className="px-3 py-1 text-slate-400 text-sm">+{bestSlots.length - 5} more</span>}
+                    </div>
+                    <p className="text-sm text-violet-400 mt-2">{bestCount} of {responses.length} available</p>
+                  </div>
+                )}
+                <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+                  <h2 className="font-semibold mb-4">Availability heatmap</h2>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-separate" style={{ borderSpacing: '2px' }}>
+                      <thead><tr><th className="p-2 text-left text-slate-400 font-medium sticky left-0 bg-slate-800/50"></th>
+                        {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`p-2 text-center text-slate-300 font-medium min-w-20 ${hasGapAfter ? 'pr-4' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
+                      </tr></thead>
+                      <tbody>
+                        {timeSlots.map(({ label, key: tk }) => (
+                          <tr key={tk}>
+                            <td className="p-2 text-slate-400 font-medium text-xs whitespace-nowrap sticky left-0 bg-slate-800/50">{label}</td>
+                            {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => {
+                              const k = getCellKey(p, tk), c = cellCounts[k], isBest = bestSlots.includes(k), guests = cellGuests[k] || [];
+                              return (
+                                <td key={p} className={`p-0 ${hasGapAfter ? 'pr-4' : ''} relative`}>
+                                  <div className={`w-full h-10 rounded flex items-center justify-center text-xs font-medium transition-all cursor-default ${getHeatColor(c)} ${isBest ? 'ring-2 ring-violet-400' : ''}`} onMouseEnter={() => setHoveredCell(k)} onMouseLeave={() => setHoveredCell(null)}>{c > 0 && c}</div>
+                                  {hoveredCell === k && guests.length > 0 && (
+                                    <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg shadow-xl whitespace-nowrap">
+                                      <div className="text-xs font-medium text-slate-300 mb-1">Available:</div>
+                                      <div className="text-sm text-white">{guests.map((n, i) => <div key={i}>{n}</div>)}</div>
+                                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-700"></div>
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex items-center gap-4 mt-4 text-xs text-slate-400"><span>Less</span><div className="flex gap-1"><div className="w-6 h-4 rounded bg-slate-800"></div><div className="w-6 h-4 rounded bg-violet-900"></div><div className="w-6 h-4 rounded bg-violet-700"></div><div className="w-6 h-4 rounded bg-violet-500"></div></div><span>More</span></div>
+                </div>
+                <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+                  <h2 className="font-semibold mb-4">Responses</h2>
+                  <div className="space-y-3">{responses.map((r, i) => <div key={i} className="flex items-center justify-between py-2 border-b border-slate-700/50 last:border-0"><span className="font-medium">{r.name}</span><span className="text-sm text-slate-400">{r.availability?.length || 0} slot{(r.availability?.length || 0) !== 1 && 's'}</span></div>)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
