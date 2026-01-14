@@ -59,6 +59,30 @@
           body: JSON.stringify({ meeting_id: meetingId, name, availability })
         });
         return res.ok;
+      },
+      async createShortUrl(meetingId) {
+        const shortCode = Math.random().toString(36).substring(2, 8);
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/short_urls`, {
+          method: 'POST',
+          headers: { 
+            'apikey': SUPABASE_ANON_KEY, 
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ short_code: shortCode, meeting_id: meetingId })
+        });
+        return res.ok ? shortCode : null;
+      },
+      async getShortUrl(shortCode) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/short_urls?short_code=eq.${shortCode}&select=meeting_id`, {
+          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return data[0]?.meeting_id || null;
+        }
+        return null;
       }
     };
 
@@ -84,15 +108,32 @@
       const [view, setView] = useState('landing');
       const [meetingData, setMeetingData] = useState(null);
       const [meetingId, setMeetingId] = useState(null);
+      const [shortCode, setShortCode] = useState(null);
+      const [loading, setLoading] = useState(true);
 
       useEffect(() => {
-        const hash = window.location.hash;
-        if (hash.startsWith('#/meeting/')) {
-          const encoded = hash.replace('#/meeting/', '');
-          const decoded = decodeMeeting(encoded);
-          if (decoded) { setMeetingData(decoded); setMeetingId(encoded); setView('guest'); }
-        }
+        const init = async () => {
+          const hash = window.location.hash;
+          if (hash.startsWith('#/meeting/')) {
+            const encoded = hash.replace('#/meeting/', '');
+            const decoded = decodeMeeting(encoded);
+            if (decoded) { setMeetingData(decoded); setMeetingId(encoded); setView('guest'); }
+          } else if (hash.startsWith('#/s/')) {
+            const code = hash.replace('#/s/', '');
+            const meetingIdFromDb = await supabase.getShortUrl(code);
+            if (meetingIdFromDb) {
+              const decoded = decodeMeeting(meetingIdFromDb);
+              if (decoded) { setMeetingData(decoded); setMeetingId(meetingIdFromDb); setShortCode(code); setView('guest'); }
+            }
+          }
+          setLoading(false);
+        };
+        init();
       }, []);
+
+      if (loading) {
+        return <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex items-center justify-center"><p className="text-slate-400">Loading...</p></div>;
+      }
 
       if (view === 'landing') {
         return (
@@ -135,21 +176,38 @@
         );
       }
 
-      if (view === 'create') return <CreateMeeting onBack={() => setView('landing')} onCreated={(data, id) => { setMeetingData(data); setMeetingId(id); setView('share'); }} />;
+      if (view === 'create') return <CreateMeeting onBack={() => setView('landing')} onCreated={async (data, id) => { setMeetingData(data); setMeetingId(id); const code = await supabase.createShortUrl(id); setShortCode(code); setView('share'); }} />;
 
       if (view === 'share') {
-        const shareUrl = `${window.location.origin}${window.location.pathname}#/meeting/${meetingId}`;
+        const fullUrl = `${window.location.origin}${window.location.pathname}#/meeting/${meetingId}`;
+        const shortUrl = shortCode ? `${window.location.origin}${window.location.pathname}#/s/${shortCode}` : null;
         return (
           <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
             <div className="max-w-xl mx-auto pt-16">
               <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6 text-green-400"><Icon name="check" className="w-8 h-8" /></div>
               <h1 className="text-3xl font-bold text-center mb-2">Meeting created!</h1>
               <p className="text-slate-400 text-center mb-8">Share this link with your guests</p>
-              <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 mb-4 border border-slate-700">
-                <span className="text-slate-400"><Icon name="link" /></span>
-                <span className="text-sm truncate flex-1 text-slate-300">{shareUrl}</span>
-                <button onClick={() => navigator.clipboard.writeText(shareUrl)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
+              
+              {shortUrl && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2 text-violet-400">Short link (recommended)</label>
+                  <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 border border-violet-500/50">
+                    <span className="text-slate-400"><Icon name="link" /></span>
+                    <span className="text-sm truncate flex-1 text-slate-100 font-medium">{shortUrl}</span>
+                    <button onClick={() => navigator.clipboard.writeText(shortUrl)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              )}
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2 text-slate-400">{shortUrl ? 'Full link' : 'Share link'}</label>
+                <div className="bg-slate-800/70 rounded-lg p-4 flex items-center gap-3 border border-slate-700">
+                  <span className="text-slate-400"><Icon name="link" /></span>
+                  <span className="text-sm truncate flex-1 text-slate-300">{fullUrl}</span>
+                  <button onClick={() => navigator.clipboard.writeText(fullUrl)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors"><Icon name="copy" className="w-4 h-4" /></button>
+                </div>
               </div>
+              
               <div className="flex gap-3 mt-8">
                 <button onClick={() => setView('guest')} className="flex-1 px-4 py-3 bg-violet-600 rounded-lg font-medium hover:bg-violet-500 transition-colors">Preview as guest</button>
                 <button onClick={() => setView('results')} className="flex-1 px-4 py-3 bg-slate-700 rounded-lg font-medium hover:bg-slate-600 transition-colors">View results</button>
