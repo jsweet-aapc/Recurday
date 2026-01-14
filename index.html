@@ -355,7 +355,18 @@
 
       const timeSlots = generateTimeSlots();
       const getOrdinal = (p) => p.split('-')[0];
-      const patternsWithGaps = meeting.patterns.map((p, i) => ({ pattern: p, hasGapAfter: i < meeting.patterns.length - 1 && getOrdinal(p) !== getOrdinal(meeting.patterns[i + 1]) }));
+      const getDay = (p) => p.split('-')[1];
+      const ordinalOrder = { 'First': 0, 'Second': 1, 'Third': 2, 'Fourth': 3, 'Last': 4 };
+      const dayOrder = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 };
+      
+      // Sort patterns by ordinal first, then by day
+      const sortedPatterns = [...meeting.patterns].sort((a, b) => {
+        const ordDiff = ordinalOrder[getOrdinal(a)] - ordinalOrder[getOrdinal(b)];
+        if (ordDiff !== 0) return ordDiff;
+        return dayOrder[getDay(a)] - dayOrder[getDay(b)];
+      });
+      
+      const patternsWithGaps = sortedPatterns.map((p, i) => ({ pattern: p, hasGapAfter: i < sortedPatterns.length - 1 && getOrdinal(p) !== getOrdinal(sortedPatterns[i + 1]) }));
       const getCellKey = (p, t) => `${p}|${t}`;
 
       const handleMouseDown = (p, t) => { setIsSelecting(true); const k = getCellKey(p, t); setSelectedCells(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; }); };
@@ -406,9 +417,9 @@
                 <label className="block text-sm font-medium mb-2">Which days of the month & times work for you? *</label>
                 <p className="text-slate-400 text-sm mb-4">Click or drag to select your available days & times.</p>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-separate" style={{ borderSpacing: '2px' }} onMouseLeave={handleMouseUp}>
+                  <table className="w-full text-sm border-separate" style={{ borderSpacing: '1px 2px' }} onMouseLeave={handleMouseUp}>
                     <thead><tr><th className="p-2 text-left text-slate-400 font-medium sticky left-0 bg-slate-950"></th>
-                      {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`p-2 text-center text-slate-300 font-medium min-w-24 ${hasGapAfter ? 'pr-4' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
+                      {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`px-1 py-2 text-center text-slate-300 font-medium min-w-20 ${hasGapAfter ? 'border-r-4 border-slate-950' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
                     </tr></thead>
                     <tbody>
                       {timeSlots.map(({ label, key: tk }) => (
@@ -416,7 +427,7 @@
                           <td className="p-2 text-slate-400 font-medium text-xs whitespace-nowrap sticky left-0 bg-slate-950">{label}</td>
                           {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => {
                             const k = getCellKey(p, tk);
-                            return <td key={p} className={`p-0 ${hasGapAfter ? 'pr-4' : ''}`}><button onMouseDown={() => handleMouseDown(p, tk)} onMouseEnter={() => handleMouseEnter(p, tk)} className={`w-full h-10 rounded transition-all select-none ${selectedCells.has(k) ? 'bg-violet-600' : 'bg-slate-800 hover:bg-slate-700'}`} /></td>;
+                            return <td key={p} className={`px-0 py-0 ${hasGapAfter ? 'border-r-4 border-slate-950' : ''}`}><button onMouseDown={() => handleMouseDown(p, tk)} onMouseEnter={() => handleMouseEnter(p, tk)} className={`w-full h-10 rounded transition-all select-none ${selectedCells.has(k) ? 'bg-violet-600' : 'bg-slate-800 hover:bg-slate-700'}`} /></td>;
                           })}
                         </tr>
                       ))}
@@ -462,10 +473,21 @@
       const timeSlots = generateTimeSlots();
       const getCellKey = (p, t) => `${p}|${t}`;
       const getOrdinal = (p) => p.split('-')[0];
-      const patternsWithGaps = meeting.patterns.map((p, i) => ({ pattern: p, hasGapAfter: i < meeting.patterns.length - 1 && getOrdinal(p) !== getOrdinal(meeting.patterns[i + 1]) }));
+      const getDay = (p) => p.split('-')[1];
+      const ordinalOrder = { 'First': 0, 'Second': 1, 'Third': 2, 'Fourth': 3, 'Last': 4 };
+      const dayOrder = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 };
+      
+      // Sort patterns by ordinal first, then by day
+      const sortedPatterns = [...meeting.patterns].sort((a, b) => {
+        const ordDiff = ordinalOrder[getOrdinal(a)] - ordinalOrder[getOrdinal(b)];
+        if (ordDiff !== 0) return ordDiff;
+        return dayOrder[getDay(a)] - dayOrder[getDay(b)];
+      });
+      
+      const patternsWithGaps = sortedPatterns.map((p, i) => ({ pattern: p, hasGapAfter: i < sortedPatterns.length - 1 && getOrdinal(p) !== getOrdinal(sortedPatterns[i + 1]) }));
 
       const cellCounts = {}, cellGuests = {};
-      meeting.patterns.forEach(p => timeSlots.forEach(t => { cellCounts[getCellKey(p, t.key)] = 0; cellGuests[getCellKey(p, t.key)] = []; }));
+      sortedPatterns.forEach(p => timeSlots.forEach(t => { cellCounts[getCellKey(p, t.key)] = 0; cellGuests[getCellKey(p, t.key)] = []; }));
       responses.forEach(r => r.availability?.forEach(({ pattern, timeKey }) => { const k = getCellKey(pattern, timeKey); if (cellCounts[k] !== undefined) { cellCounts[k]++; cellGuests[k].push(r.name); } }));
 
       const maxCount = Math.max(...Object.values(cellCounts), 1);
@@ -507,9 +529,9 @@
                 <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
                   <h2 className="font-semibold mb-4">Availability heatmap</h2>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-separate" style={{ borderSpacing: '2px' }}>
+                    <table className="w-full text-sm border-separate" style={{ borderSpacing: '1px 2px' }}>
                       <thead><tr><th className="p-2 text-left text-slate-400 font-medium sticky left-0 bg-slate-800/50"></th>
-                        {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`p-2 text-center text-slate-300 font-medium min-w-20 ${hasGapAfter ? 'pr-4' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
+                        {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => { const [o, d] = p.split('-'); return <th key={p} className={`px-1 py-2 text-center text-slate-300 font-medium min-w-20 ${hasGapAfter ? 'border-r-4 border-slate-900' : ''}`}><div className="text-xs text-slate-500">{o}</div><div>{d.slice(0, 3)}</div></th>; })}
                       </tr></thead>
                       <tbody>
                         {timeSlots.map(({ label, key: tk }) => (
@@ -518,7 +540,7 @@
                             {patternsWithGaps.map(({ pattern: p, hasGapAfter }) => {
                               const k = getCellKey(p, tk), c = cellCounts[k], isBest = bestSlots.includes(k), guests = cellGuests[k] || [];
                               return (
-                                <td key={p} className={`p-0 ${hasGapAfter ? 'pr-4' : ''} relative`}>
+                                <td key={p} className={`px-0 py-0 ${hasGapAfter ? 'border-r-4 border-slate-900' : ''} relative`}>
                                   <div className={`w-full h-10 rounded flex items-center justify-center text-xs font-medium transition-all cursor-default ${getHeatColor(c)} ${isBest ? 'ring-2 ring-violet-400' : ''}`} onMouseEnter={() => setHoveredCell(k)} onMouseLeave={() => setHoveredCell(null)}>{c > 0 && c}</div>
                                   {hoveredCell === k && guests.length > 0 && (
                                     <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg shadow-xl whitespace-nowrap">
